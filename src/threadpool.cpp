@@ -52,12 +52,13 @@ void ThreadPool::submitTask(shared_ptr<Task> sp)
 
     // 判断task队列是否满了，如果满了进入等待
     // 用户等待超过1s钟，即认为提交任务失败，返回
-    if(!cvNotFull_.wait_for(lock, std::chrono::seconds(1),
-        [&]() { return taskQue_.size() < taskMaxThreshold_; }))
-        {
-            cout << "task queue is full, submit failed!" << endl;
-            return;
-        }
+    if (!cvNotFull_.wait_for(lock, std::chrono::seconds(1),
+                             [&]()
+                             { return taskQue_.size() < taskMaxThreshold_; }))
+    {
+        cout << "task queue is full, submit failed!" << endl;
+        return;
+    }
 
     // 向task队列中添加任务
     taskQue_.push(sp);
@@ -70,7 +71,30 @@ void ThreadPool::submitTask(shared_ptr<Task> sp)
 // 线程入口函数
 void ThreadPool::threadFunc()
 {
-    cout << "start thread, tid: " << std::this_thread::get_id() << endl;
+    for (;;)
+    {
+        shared_ptr<Task> task;
+        {
+            // 获取锁
+            unique_lock<mutex> lock(taskQueMtx_);
+            // 等待cvNotEmpty_通知
+            cvNotEmpty_.wait(lock, [&]() { return !taskQue_.empty(); });
+            // 从task队列中取出一个任务
+            task = taskQue_.front();
+            taskQue_.pop();
+            taskCount_--;
+            // 如果队列中还有任务，通知其他线程
+            if(!taskQue_.empty())
+            {
+                cvNotEmpty_.notify_all();
+            }
+            // 通知cvNotFull_
+            cvNotFull_.notify_all();
+        } // 释放锁
+
+        // 执行任务
+        task->run();
+    }
 }
 
 /* ==============================================================*/
