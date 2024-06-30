@@ -17,6 +17,7 @@ using std::mutex;
 using std::queue;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::make_unique;
 using std::unique_lock;
 using std::thread;
 using std::vector;
@@ -30,6 +31,52 @@ enum class PoolMode
 {
     MODE_FIXED,  // 固定数量的线程池模式
     MODE_CACHED, // 动态增长的线程池模式
+};
+
+// Any类，可以接受任意类型数据
+class Any
+{
+public:
+    Any() = default;
+    ~Any() = default;
+    Any(const Any&) = delete;
+    Any& operator=(const Any&) = delete;
+    Any(Any&&) = default;
+    Any& operator=(Any&&) = default;
+
+
+    // 一个可以接受任意类型数据的构造函数
+    template<typename T>
+    Any(T data) : base_(make_unique<Derived<T>>(data)) {}
+
+    // 从Any类对象中提取原类型对象
+    template<typename T>
+    T Cast()
+    {
+        Derived<T>* p = dynamic_cast<Derived<T>*>(base_.get());
+        if(p == nullptr)
+        {
+            throw "bad cast!";
+        }
+        return p->data_;
+    }
+private:
+    // 基类类型
+    class Base
+    {
+    public:
+        virtual ~Base() = default;
+    };
+    // 派生类类型（模板）
+    template<typename T>
+    class Derived : public Base
+    {
+    public:
+        Derived(T data) : data_(data) {}
+        T data_; // 保存了任意类型数据
+    };
+
+    unique_ptr<Base> base_; // 基类类型的智能指针
 };
 
 // task抽象基类
