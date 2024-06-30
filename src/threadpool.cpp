@@ -45,7 +45,7 @@ void ThreadPool::setTaskMaxThreshold(int taskMaxThreshold)
 }
 
 // 向task队列中提交任务
-void ThreadPool::submitTask(shared_ptr<Task> sp)
+Result ThreadPool::submitTask(shared_ptr<Task> sp)
 {
     // 获取锁
     unique_lock<mutex> lock(taskQueMtx_);
@@ -57,7 +57,7 @@ void ThreadPool::submitTask(shared_ptr<Task> sp)
                              { return taskQue_.size() < taskMaxThreshold_; }))
     {
         cout << "task queue is full, submit failed!" << endl;
-        return;
+        return Result(sp, false);
     }
 
     // 向task队列中添加任务
@@ -66,6 +66,8 @@ void ThreadPool::submitTask(shared_ptr<Task> sp)
 
     // 通知工作线程
     cvNotEmpty_.notify_all();
+
+    return Result(sp);
 }
 
 // 线程入口函数
@@ -78,13 +80,14 @@ void ThreadPool::threadFunc()
             // 获取锁
             unique_lock<mutex> lock(taskQueMtx_);
             // 等待cvNotEmpty_通知
-            cvNotEmpty_.wait(lock, [&]() { return !taskQue_.empty(); });
+            cvNotEmpty_.wait(lock, [&]()
+                             { return !taskQue_.empty(); });
             // 从task队列中取出一个任务
             task = taskQue_.front();
             taskQue_.pop();
             taskCount_--;
             // 如果队列中还有任务，通知其他线程
-            if(!taskQue_.empty())
+            if (!taskQue_.empty())
             {
                 cvNotEmpty_.notify_all();
             }
@@ -93,7 +96,7 @@ void ThreadPool::threadFunc()
         } // 释放锁
 
         // 执行任务
-        task->run();
+        task->exec();
     }
 }
 
@@ -111,4 +114,48 @@ void Thread::start()
 {
     thread t(func_);
     t.detach();
+}
+
+/* ==============================================================*/
+// Result方法实现
+/*===============================================================*/
+
+Result::Result(shared_ptr<Task> sp, bool isValid)
+    : task_(sp), isValid_(isValid)
+{
+    task_->setResult(this);
+}
+
+// 设置任务执行结果
+void Result::setVal(Any any)
+{
+    any_ = std::move(any);
+    sem_.post();
+}
+
+// 获取任务执行结果
+Any Result::get()
+{
+    sem_.wait();
+    return std::move(any_);
+}
+
+/* ==============================================================*/
+// Task方法实现
+/*===============================================================*/
+
+Task::Task()
+    : result_(nullptr)
+{
+}
+// 线程函数中调用的接口
+void Task::exec()
+{
+    result_->setVal(std::move(run()));
+}
+
+// 设置Result*
+void Task::setResult(Result *res)
+{
+    result_ = res;
 }

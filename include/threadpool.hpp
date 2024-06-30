@@ -41,12 +41,22 @@ public:
     ~Any() = default;
     Any(const Any &) = delete;
     Any &operator=(const Any &) = delete;
-    Any(Any &&) = default;
-    Any &operator=(Any &&) = default;
+    Any(Any &&any)
+        : base_(std::move(any.base_))
+    {
+    }
+    Any &operator=(Any &&any)
+    {
+        base_ = std::move(any.base_);
+        any.base_ = nullptr;
+        return *this;
+    }
 
     // 一个可以接受任意类型数据的构造函数
     template <typename T>
-    Any(T data) : base_(make_unique<Derived<T>>(data)) {}
+    Any(T data) : base_(make_unique<Derived<T>>(data))
+    {
+    }
 
     // 从Any类对象中提取原类型对象
     template <typename T>
@@ -83,29 +93,56 @@ private:
 class Semaphore
 {
 public:
-    Semaphore(int limit = 0) : resLimit_(limit) {}
+    Semaphore(int limit = 0) : resLimit_(limit), mtx_(make_unique<mutex>()), cond_(make_unique<condition_variable>()) {}
     ~Semaphore() = default;
+    Semaphore(Semaphore &&) = default;
+    Semaphore &operator=(Semaphore &&) = default;
 
     // 获取信号量
     void wait()
     {
-        unique_lock<mutex> lock(mtx_);
-        cond_.wait(lock, [&]()->bool { return resLimit_ > 0; });
+        unique_lock<mutex> lock(*mtx_);
+        cond_->wait(lock, [&]() -> bool
+                    { return resLimit_ > 0; });
         resLimit_--;
     }
 
     // 增加信号量资源计数
     void post()
     {
-        unique_lock<mutex> lock(mtx_);
+        unique_lock<mutex> lock(*mtx_);
         resLimit_++;
-        cond_.notify_all();
+        cond_->notify_all();
     }
-    
+
 private:
-    int resLimit_;            // 资源计数
-    mutex mtx_;               // 互斥锁
-    condition_variable cond_; // 条件变量
+    int resLimit_;                        // 资源计数
+    unique_ptr<mutex> mtx_;               // 互斥锁
+    unique_ptr<condition_variable> cond_; // 条件变量
+};
+
+class Task; // 前置声明
+
+// Result类，用于获取task执行结果
+class Result
+{
+public:
+    Result(shared_ptr<Task> sp, bool isValid = true);
+    ~Result() = default;
+    Result(Result &&) = default;
+    Result &operator=(Result &&) = default;
+
+    // 设置任务执行结果
+    void setVal(Any any);
+
+    // 获取任务执行结果
+    Any get();
+
+private:
+    Any any_;
+    Semaphore sem_;
+    shared_ptr<Task> task_;
+    bool isValid_;
 };
 
 // task抽象基类
@@ -113,7 +150,19 @@ private:
 class Task
 {
 public:
-    virtual void run() = 0;
+    Task();
+    ~Task() = default;
+    // 任务类需要定义的接口，实现真正的用户任务
+    virtual Any run() = 0;
+
+    // 线程函数中调用的接口
+    void exec();
+
+    // 设置Result*
+    void setResult(Result* res);
+
+private:
+    Result *result_;
 };
 
 // 线程类
@@ -147,7 +196,7 @@ public:
     void setMode(PoolMode poolMode);
 
     // 向task队列中提交任务
-    void submitTask(shared_ptr<Task> sp);
+    Result submitTask(shared_ptr<Task> sp);
 
     // 禁止拷贝构造和拷贝赋值
     ThreadPool(const ThreadPool &) = delete;
