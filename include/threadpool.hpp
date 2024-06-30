@@ -41,16 +41,8 @@ public:
     ~Any() = default;
     Any(const Any &) = delete;
     Any &operator=(const Any &) = delete;
-    Any(Any &&any)
-        : base_(std::move(any.base_))
-    {
-    }
-    Any &operator=(Any &&any)
-    {
-        base_ = std::move(any.base_);
-        any.base_ = nullptr;
-        return *this;
-    }
+    Any(Any &&any) = default;
+    Any &operator=(Any &&any) = default;
 
     // 一个可以接受任意类型数据的构造函数
     template <typename T>
@@ -159,7 +151,7 @@ public:
     void exec();
 
     // 设置Result*
-    void setResult(Result* res);
+    void setResult(Result *res);
 
 private:
     Result *result_;
@@ -169,14 +161,19 @@ private:
 class Thread
 {
 public:
-    using ThreadFunc = function<void()>;
+    using ThreadFunc = function<void(int)>;
 
     Thread(ThreadFunc threadfunc);
     // 启动线程函数
     void start();
 
+    // 获取线程id
+    int getId() const;
+
 private:
     ThreadFunc func_;
+    static int generateId_;
+    int threadId_; // 保存线程id
 };
 
 // 线程池类
@@ -195,8 +192,11 @@ public:
     // 设置线程池模式
     void setMode(PoolMode poolMode);
 
+    // 设置最大线程数量
+    void setMaxThreadSize(int maxThreadSize);
+
     // 向task队列中提交任务
-    Result submitTask(shared_ptr<Task> sp);
+    shared_ptr<Result> submitTask(shared_ptr<Task> sp);
 
     // 禁止拷贝构造和拷贝赋值
     ThreadPool(const ThreadPool &) = delete;
@@ -204,12 +204,18 @@ public:
 
 private:
     // 线程入口函数
-    void threadFunc();
+    void threadFunc(int threadId);
+
+    bool checkPoolState();
 
 private:
     vector<unique_ptr<Thread>> threads_; // 线程对列
     queue<shared_ptr<Task>> taskQue_;    // 任务队列
     int initThreadSize_;                 // 初始线程数量
+    atomic_int curThreadSize_;           // 当前线程数量
+    atomic_int maxThreadSize_;           // 最大线程数量
+    atomic_int idleThreadSize_;          // 空闲线程的数量
+
     atomic_int taskCount_;               // 任务队列中任务的个数
     int taskMaxThreshold_;               // 任务队列中任务最大数量
 
@@ -217,7 +223,8 @@ private:
     condition_variable cvNotEmpty_; // 任务队列不空，工作线程可以从其中取出任务执行
     mutex taskQueMtx_;              // 保证任务队列线程安全的互斥锁
 
-    PoolMode poolMode_; // 线程池的工作模式：fixed 和 cached
+    PoolMode poolMode_;       // 线程池的工作模式：fixed 和 cached
+    atomic_int isPoolRunning; // 当前线程池是否启动
 };
 
 #endif

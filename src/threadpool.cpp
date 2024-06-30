@@ -1,11 +1,16 @@
 #include "threadpool.hpp"
+#include <algorithm>
 
 /* ==============================================================*/
 // 线程池ThreadPool类方法实现
 /*===============================================================*/
 
+const int MAX_TASK_SIZE = 1024;
+const int MAX_THREAD_SIZE = 10;
+const int MAX_THREAD_IDLE_TIME = 20;
+
 ThreadPool::ThreadPool()
-    : initThreadSize_(4), taskCount_(0), taskMaxThreshold_(1024), poolMode_(PoolMode::MODE_FIXED)
+    : initThreadSize_(4), curThreadSize_(0), maxThreadSize_(MAX_THREAD_SIZE), idleThreadSize_(0), taskCount_(0), taskMaxThreshold_(MAX_TASK_SIZE), poolMode_(PoolMode::MODE_FIXED), isPoolRunning(false)
 {
 }
 
@@ -17,12 +22,15 @@ ThreadPool::~ThreadPool()
 void ThreadPool::start(int initThreadSize)
 {
     initThreadSize_ = initThreadSize;
+    isPoolRunning = true;
 
     // 创建线程对象
     for (int i = 0; i < initThreadSize_; i++)
     {
-        auto t = std::make_unique<Thread>(bind(&ThreadPool::threadFunc, this));
+        auto t = std::make_unique<Thread>(bind(&ThreadPool::threadFunc, this, std::placeholders::_1));
         threads_.emplace_back(std::move(t));
+        curThreadSize_++;
+        idleThreadSize_++;
     }
 
     // 启动线程函数
@@ -35,17 +43,29 @@ void ThreadPool::start(int initThreadSize)
 // 设置线程池模式
 void ThreadPool::setMode(PoolMode poolMode)
 {
+    if (checkPoolState())
+        return;
     poolMode_ = poolMode;
 }
 
 // 设置task数量上限
 void ThreadPool::setTaskMaxThreshold(int taskMaxThreshold)
 {
+    if (checkPoolState())
+        return;
     taskMaxThreshold_ = taskMaxThreshold;
 }
 
+// 设置最大线程数量
+void ThreadPool::setMaxThreadSize(int maxThreadSize)
+{
+    if (checkPoolState())
+        return;
+    maxThreadSize_ = maxThreadSize;
+}
+
 // 向task队列中提交任务
-Result ThreadPool::submitTask(shared_ptr<Task> sp)
+shared_ptr<Result> ThreadPool::submitTask(shared_ptr<Task> sp)
 {
     // 获取锁
     unique_lock<mutex> lock(taskQueMtx_);
@@ -57,7 +77,7 @@ Result ThreadPool::submitTask(shared_ptr<Task> sp)
                              { return taskQue_.size() < taskMaxThreshold_; }))
     {
         cout << "task queue is full, submit failed!" << endl;
-        return Result(sp, false);
+        return std::make_shared<Result>(sp, false);
     }
 
     // 向task队列中添加任务
@@ -67,12 +87,25 @@ Result ThreadPool::submitTask(shared_ptr<Task> sp)
     // 通知工作线程
     cvNotEmpty_.notify_all();
 
-    return Result(sp);
+    // cached模式下，动态增加线程数量
+    if (poolMode_ == PoolMode::MODE_CACHED && taskCount_ > idleThreadSize_ && curThreadSize_ < maxThreadSize_)
+    {
+        threads_.emplace_back(std::move(make_unique<Thread>(std::bind(&ThreadPool::threadFunc, this, std::placeholders::_1))));
+        threads_.back()->start();
+        curThreadSize_++;
+        idleThreadSize_++;
+        cout << "creat new thread! " << endl;
+    }
+
+    return std::make_shared<Result>(sp);
 }
 
 // 线程入口函数
-void ThreadPool::threadFunc()
+void ThreadPool::threadFunc(int threadId)
 {
+    int id = threadId;
+    // 记录线程启动时间
+    auto lastTime = std::chrono::high_resolution_clock().now();
     for (;;)
     {
         shared_ptr<Task> task;
@@ -80,12 +113,43 @@ void ThreadPool::threadFunc()
             // 获取锁
             unique_lock<mutex> lock(taskQueMtx_);
             // 等待cvNotEmpty_通知
-            cvNotEmpty_.wait(lock, [&]()
-                             { return !taskQue_.empty(); });
+            while (taskQue_.empty())
+            {
+                if (poolMode_ == PoolMode::MODE_CACHED)
+                {
+                    cout << "here we go!" << endl;
+                    if (std::cv_status::timeout == cvNotEmpty_.wait_for(lock, std::chrono::seconds(1)))
+                    {
+                        cout << "check time !" << endl;
+                        auto now = std::chrono::high_resolution_clock().now();
+                        auto dur = std::chrono::duration_cast<std::chrono::seconds>(now - lastTime);
+                        if (dur.count() > MAX_THREAD_IDLE_TIME && curThreadSize_ > initThreadSize_)
+                        {
+                            // 从thread_中删除当前线程
+                            auto it = std::find_if(threads_.begin(), threads_.end(), [&](auto &up)
+                                           { return up->getId() == id; });
+                            threads_.erase(it);
+                            cout << "free thread !" << endl;
+                            // 更新记录数据
+                            curThreadSize_--;
+                            idleThreadSize_--;
+                            cout << "threadid: " << std::this_thread::get_id() << " exit!" << endl;
+                            return;
+                        }
+                    }
+                    cout << "after if" << endl;
+                }
+                else
+                {
+                    cvNotEmpty_.wait(lock);
+                }
+            }
+
             // 从task队列中取出一个任务
             task = taskQue_.front();
             taskQue_.pop();
             taskCount_--;
+            idleThreadSize_--;
             // 如果队列中还有任务，通知其他线程
             if (!taskQue_.empty())
             {
@@ -96,8 +160,19 @@ void ThreadPool::threadFunc()
         } // 释放锁
 
         // 执行任务
-        task->exec();
+        if (task != nullptr)
+        {
+            task->exec();
+        }
+        idleThreadSize_++;
+        // 记录线程开始空闲的时间
+        lastTime = std::chrono::high_resolution_clock().now();
     }
+}
+
+bool ThreadPool::checkPoolState()
+{
+    return isPoolRunning;
 }
 
 /* ==============================================================*/
@@ -105,17 +180,23 @@ void ThreadPool::threadFunc()
 /*===============================================================*/
 
 Thread::Thread(ThreadFunc threadfunc)
-    : func_(threadfunc)
+    : func_(threadfunc), threadId_(generateId_++)
 {
 }
 
 // 启动线程函数
 void Thread::start()
 {
-    thread t(func_);
+    thread t(func_, threadId_);
     t.detach();
 }
 
+int Thread::generateId_ = 0;
+
+int Thread::getId() const
+{
+    return threadId_;
+}
 /* ==============================================================*/
 // Result方法实现
 /*===============================================================*/
