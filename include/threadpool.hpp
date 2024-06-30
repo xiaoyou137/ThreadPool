@@ -16,6 +16,7 @@ using std::condition_variable;
 using std::mutex;
 using std::queue;
 using std::shared_ptr;
+using std::unique_ptr;
 using std::thread;
 using std::vector;
 using std::function;
@@ -79,7 +80,7 @@ private:
     void threadFunc();
 
 private:
-    vector<Thread *> threads_;        // 线程对列
+    vector<unique_ptr<Thread>> threads_;        // 线程对列
     queue<shared_ptr<Task>> taskQue_; // 任务队列
     int initThreadSize_;              // 初始线程数量
     atomic_int taskCount_;            // 任务队列中任务的个数

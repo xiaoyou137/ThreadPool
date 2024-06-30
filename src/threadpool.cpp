@@ -21,7 +21,8 @@ void ThreadPool::start(int initThreadSize)
     // 创建线程对象
     for (int i = 0; i < initThreadSize_; i++)
     {
-        threads_.emplace_back(new Thread(bind(&ThreadPool::threadFunc, this)));
+        auto t = std::make_unique<Thread>(bind(&ThreadPool::threadFunc, this));
+        threads_.emplace_back(std::move(t));
     }
 
     // 启动线程函数

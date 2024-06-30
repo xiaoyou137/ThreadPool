@@ -12,7 +12,7 @@ set(CMAKE_CXX_COMPILER "/opt/rh/devtoolset-10/root/usr/bin/g++")
 #设置编译选项
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O2")
 #设置使用的C++11版本
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 #生成可执行文件路径
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
