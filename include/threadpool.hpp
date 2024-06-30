@@ -17,6 +17,7 @@ using std::mutex;
 using std::queue;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::unique_lock;
 using std::thread;
 using std::vector;
 using std::function;

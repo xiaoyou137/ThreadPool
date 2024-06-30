@@ -47,6 +47,24 @@ void ThreadPool::setTaskMaxThreshold(int taskMaxThreshold)
 // 向task队列中提交任务
 void ThreadPool::submitTask(shared_ptr<Task> sp)
 {
+    // 获取锁
+    unique_lock<mutex> lock(taskQueMtx_);
+
+    // 判断task队列是否满了，如果满了进入等待
+    // 用户等待超过1s钟，即认为提交任务失败，返回
+    if(!cvNotFull_.wait_for(lock, std::chrono::seconds(1),
+        [&]() { return taskQue_.size() < taskMaxThreshold_; }))
+        {
+            cout << "task queue is full, submit failed!" << endl;
+            return;
+        }
+
+    // 向task队列中添加任务
+    taskQue_.push(sp);
+    taskCount_++;
+
+    // 通知工作线程
+    cvNotEmpty_.notify_all();
 }
 
 // 线程入口函数
