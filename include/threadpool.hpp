@@ -8,6 +8,8 @@
 #include <condition_variable>
 #include <atomic>
 #include <memory>
+#include <functional>
+#include <iostream>
 
 using std::atomic_int;
 using std::condition_variable;
@@ -16,6 +18,10 @@ using std::queue;
 using std::shared_ptr;
 using std::thread;
 using std::vector;
+using std::function;
+using std::bind;
+using std::cout;
+using std::endl;
 
 // 线程池模式枚举类
 enum class PoolMode
@@ -36,7 +42,14 @@ public:
 class Thread
 {
 public:
+    using ThreadFunc = function<void()>;
+
+    Thread(ThreadFunc threadfunc);
+    // 启动线程函数
+    void start();
 private:
+
+    ThreadFunc func_;
 };
 
 // 线程池类
@@ -47,14 +60,28 @@ public:
     ~ThreadPool();
 
     //  启动线程池函数
-    void start();
+    void start(int initThreadSize = 4);
+
+    // 设置task数量上限
+    void setTaskMaxThreshold(int taskMaxThreshold);
 
     // 设置线程池模式
     void setMode(PoolMode poolMode);
 
+    // 向task队列中提交任务
+    void submitTask(shared_ptr<Task> sp);
+
+    // 禁止拷贝构造和拷贝赋值
+    ThreadPool(const ThreadPool&) = delete;
+    ThreadPool& operator=(const ThreadPool&) = delete;
 private:
-    vector<thread *> threads_;        // 线程对列
+    // 线程入口函数
+    void threadFunc();
+
+private:
+    vector<Thread *> threads_;        // 线程对列
     queue<shared_ptr<Task>> taskQue_; // 任务队列
+    int initThreadSize_;              // 初始线程数量
     atomic_int taskCount_;            // 任务队列中任务的个数
     int taskMaxThreshold_;            // 任务队列中任务最大数量
 
