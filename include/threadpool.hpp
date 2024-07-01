@@ -119,7 +119,7 @@ class Task; // 前置声明
 class Result
 {
 public:
-    Result(shared_ptr<Task> sp, bool isValid = true);
+    Result(shared_ptr<Task> sp = nullptr, bool isValid = true);
     ~Result() = default;
     Result(Result &&) = default;
     Result &operator=(Result &&) = default;
@@ -174,6 +174,7 @@ private:
     ThreadFunc func_;
     static int generateId_;
     int threadId_; // 保存线程id
+    Result result_;
 };
 
 // 线程池类
@@ -184,7 +185,7 @@ public:
     ~ThreadPool();
 
     //  启动线程池函数
-    void start(int initThreadSize = 4);
+    void start(int initThreadSize = std::thread::hardware_concurrency());
 
     // 设置task数量上限
     void setTaskMaxThreshold(int taskMaxThreshold);

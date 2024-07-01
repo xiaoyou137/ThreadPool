@@ -14,12 +14,13 @@ ThreadPool::ThreadPool()
 {
 }
 
+// 线程池析构，回收线程资源
 ThreadPool::~ThreadPool()
 {
     isPoolRunning = false;
-    cvNotEmpty_.notify_all();
 
     unique_lock<mutex> lock(taskQueMtx_);
+    cvNotEmpty_.notify_all();
     cvExit_.wait(lock, [&]() -> bool
                  { return threads_.empty(); });
 }
@@ -112,15 +113,30 @@ void ThreadPool::threadFunc(int threadId)
     int id = threadId;
     // 记录线程启动时间
     auto lastTime = std::chrono::high_resolution_clock().now();
-    while (isPoolRunning)
+
+    // 线程池析构时，等待所有任务执行完成再析构。
+    for (;;)
     {
         shared_ptr<Task> task;
         {
             // 获取锁
             unique_lock<mutex> lock(taskQueMtx_);
-            // 等待cvNotEmpty_通知
+            // 锁+双重检查
             while (taskQue_.empty())
             {
+                if (!isPoolRunning)
+                {
+                    // 释放Thread资源
+                    auto it = std::find_if(threads_.begin(), threads_.end(), [&](auto &up)
+                                           { return up->getId() == id; });
+                    if (it != threads_.end())
+                    {
+                        threads_.erase(it);
+                        cout << "threadid: " << std::this_thread::get_id() << " exit!" << endl;
+                    }
+                    cvExit_.notify_all();
+                    return;
+                }
                 if (poolMode_ == PoolMode::MODE_CACHED)
                 {
                     if (std::cv_status::timeout == cvNotEmpty_.wait_for(lock, std::chrono::seconds(1)))
@@ -146,24 +162,11 @@ void ThreadPool::threadFunc(int threadId)
                 }
                 else
                 {
+                    cout << "threadid: " << std::this_thread::get_id() << " 尝试获取任务!" << endl;
                     cvNotEmpty_.wait(lock);
                 }
-
-                if (!isPoolRunning)
-                {
-                    // 从thread_中删除当前线程
-                    auto it = std::find_if(threads_.begin(), threads_.end(), [&](auto &up)
-                                           { return up->getId() == id; });
-                    if (it != threads_.end())
-                    {
-                        threads_.erase(it);
-                        cout << "threadid: " << std::this_thread::get_id() << " exit!" << endl;
-                    }
-                    cvExit_.notify_all();
-                    return;
-                }
             }
-
+            
             // 从task队列中取出一个任务
             task = taskQue_.front();
             taskQue_.pop();
@@ -187,15 +190,6 @@ void ThreadPool::threadFunc(int threadId)
         // 记录线程开始空闲的时间
         lastTime = std::chrono::high_resolution_clock().now();
     }
-    // 释放Thread资源
-    auto it = std::find_if(threads_.begin(), threads_.end(), [&](auto &up)
-                           { return up->getId() == id; });
-    if (it != threads_.end())
-    {
-        threads_.erase(it);
-        cout << "threadid: " << std::this_thread::get_id() << " exit!" << endl;
-    }
-    cvExit_.notify_all();
 }
 
 bool ThreadPool::checkPoolState()
