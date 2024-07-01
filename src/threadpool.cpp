@@ -224,7 +224,9 @@ int Thread::getId() const
 /*===============================================================*/
 
 Result::Result(shared_ptr<Task> sp, bool isValid)
-    : task_(sp), isValid_(isValid)
+    : task_(sp)
+    , isValid_(isValid)
+    , isExit_(make_unique<std::atomic_bool>(false))
 {
     if (task_ != nullptr)
         task_->setResult(this);
@@ -254,6 +256,8 @@ Result::Result(Result &&r)
 // 设置任务执行结果
 void Result::setVal(Any any)
 {
+    if(isExit_->load())
+        return;
     any_ = std::move(any);
     sem_.post();
 }

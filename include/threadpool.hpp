@@ -85,23 +85,33 @@ private:
 class Semaphore
 {
 public:
-    Semaphore(int limit = 0) : resLimit_(limit), mtx_(make_unique<mutex>()), cond_(make_unique<condition_variable>()) {}
-    ~Semaphore() = default;
+    Semaphore(int limit = 0)
+        : resLimit_(limit), mtx_(make_unique<mutex>()), cond_(make_unique<condition_variable>()), isExit_(make_unique<std::atomic_bool>(false))
+    {
+    }
+    ~Semaphore()
+    {
+        isExit_->store(true);
+    }
     Semaphore(Semaphore &&) = default;
     Semaphore &operator=(Semaphore &&) = default;
 
     // 获取信号量
     void wait()
     {
+        if (isExit_->load())
+            return;
         unique_lock<mutex> lock(*mtx_);
         cond_->wait(lock, [&]() -> bool
-                    { return resLimit_ > 0; });   
+                    { return resLimit_ > 0; });
         resLimit_--;
     }
 
     // 增加信号量资源计数
     void post()
     {
+        if (isExit_->load())
+            return;
         unique_lock<mutex> lock(*mtx_);
         resLimit_++;
         cond_->notify_all();
@@ -111,6 +121,7 @@ private:
     int resLimit_;                        // 资源计数
     unique_ptr<mutex> mtx_;               // 互斥锁
     unique_ptr<condition_variable> cond_; // 条件变量
+    unique_ptr<std::atomic_bool> isExit_; // 是否析构了
 };
 
 class Task; // 前置声明
@@ -120,7 +131,10 @@ class Result
 {
 public:
     Result(shared_ptr<Task> sp = nullptr, bool isValid = true);
-    ~Result() = default;
+    ~Result()
+    {
+        isExit_->store(true);
+    }
     Result(Result &&);
     Result &operator=(Result &&r);
 
@@ -135,6 +149,7 @@ private:
     Semaphore sem_;
     shared_ptr<Task> task_;
     bool isValid_;
+    unique_ptr<std::atomic_bool> isExit_; // 是否析构了
 };
 
 // task抽象基类

@@ -55,7 +55,7 @@ int main()
 
         auto res1 = p.submitTask(std::make_shared<MyTask>(1, 100000000));
         //ull sum1 = res1->get().Cast<ull>();
-        res1.get().Cast<ull>();
+        //res1.get().Cast<ull>();
 
         //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
