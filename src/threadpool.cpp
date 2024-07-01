@@ -72,7 +72,7 @@ void ThreadPool::setMaxThreadSize(int maxThreadSize)
 }
 
 // 向task队列中提交任务
-shared_ptr<Result> ThreadPool::submitTask(shared_ptr<Task> sp)
+Result ThreadPool::submitTask(shared_ptr<Task> sp)
 {
     // 获取锁
     unique_lock<mutex> lock(taskQueMtx_);
@@ -84,7 +84,7 @@ shared_ptr<Result> ThreadPool::submitTask(shared_ptr<Task> sp)
                              { return taskQue_.size() < taskMaxThreshold_; }))
     {
         cout << "task queue is full, submit failed!" << endl;
-        return std::make_shared<Result>(sp, false);
+        return Result(sp, false);
     }
 
     // 向task队列中添加任务
@@ -104,7 +104,7 @@ shared_ptr<Result> ThreadPool::submitTask(shared_ptr<Task> sp)
         cout << "creat new thread! " << endl;
     }
 
-    return std::make_shared<Result>(sp);
+    return Result(sp);
 }
 
 // 线程入口函数
@@ -166,7 +166,7 @@ void ThreadPool::threadFunc(int threadId)
                     cvNotEmpty_.wait(lock);
                 }
             }
-            
+
             // 从task队列中取出一个任务
             task = taskQue_.front();
             taskQue_.pop();
@@ -202,7 +202,7 @@ bool ThreadPool::checkPoolState()
 /*===============================================================*/
 
 Thread::Thread(ThreadFunc threadfunc)
-    : func_(threadfunc), threadId_(generateId_++)
+    : func_(threadfunc), threadId_(generateId_++), result_()
 {
 }
 
@@ -226,7 +226,29 @@ int Thread::getId() const
 Result::Result(shared_ptr<Task> sp, bool isValid)
     : task_(sp), isValid_(isValid)
 {
+    if (task_ != nullptr)
+        task_->setResult(this);
+}
+
+Result &Result::operator=(Result &&r)
+{
+    any_ = std::move(r.any_);
+    sem_ = std::move(r.sem_);
+    isValid_ = r.isValid_;
+    task_ = r.task_;
     task_->setResult(this);
+    r.task_.reset();
+    return *this;
+}
+
+Result::Result(Result &&r)
+{
+    any_ = std::move(r.any_);
+    sem_ = std::move(r.sem_);
+    isValid_ = r.isValid_;
+    task_ = r.task_;
+    task_->setResult(this);
+    r.task_.reset();
 }
 
 // 设置任务执行结果

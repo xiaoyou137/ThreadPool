@@ -19,7 +19,7 @@ public:
             sum += i;
         }
         cout << sum << endl;
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        //std::this_thread::sleep_for(std::chrono::seconds(3));
         return sum;
     }
 
@@ -54,7 +54,8 @@ int main()
         p.start(4);
 
         auto res1 = p.submitTask(std::make_shared<MyTask>(1, 100000000));
-        ull sum1 = res1->get().Cast<ull>();
+        //ull sum1 = res1->get().Cast<ull>();
+        res1.get().Cast<ull>();
 
         //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 

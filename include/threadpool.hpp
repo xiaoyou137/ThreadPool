@@ -95,7 +95,7 @@ public:
     {
         unique_lock<mutex> lock(*mtx_);
         cond_->wait(lock, [&]() -> bool
-                    { return resLimit_ > 0; });
+                    { return resLimit_ > 0; });   
         resLimit_--;
     }
 
@@ -121,8 +121,8 @@ class Result
 public:
     Result(shared_ptr<Task> sp = nullptr, bool isValid = true);
     ~Result() = default;
-    Result(Result &&) = default;
-    Result &operator=(Result &&) = default;
+    Result(Result &&);
+    Result &operator=(Result &&r);
 
     // 设置任务执行结果
     void setVal(Any any);
@@ -197,7 +197,7 @@ public:
     void setMaxThreadSize(int maxThreadSize);
 
     // 向task队列中提交任务
-    shared_ptr<Result> submitTask(shared_ptr<Task> sp);
+    Result submitTask(shared_ptr<Task> sp);
 
     // 禁止拷贝构造和拷贝赋值
     ThreadPool(const ThreadPool &) = delete;
