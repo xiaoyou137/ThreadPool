@@ -25,5 +25,4 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 link_directories(/usr/lib64/mysql/)
 
 #加载子目录
-add_subdirectory(src)
 add_subdirectory(test)

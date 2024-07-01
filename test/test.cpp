@@ -2,7 +2,7 @@
 
 using ull = unsigned long long;
 
-class MyTask : public Task
+/* class MyTask : public Task
 {
 public:
     MyTask(int begin, int end)
@@ -26,7 +26,26 @@ public:
 private:
     int begin_;
     int end_;
-};
+}; */
+
+ull sum1(int begin, int end)
+{
+    ull sum = 0;
+    for (int i = begin; i <= end; i++)
+    {
+        sum += i;
+    }
+    return sum;
+}
+
+ull sum2(int begin, int end, ull sum)
+{
+    for (int i = begin; i <= end; i++)
+    {
+        sum += i;
+    }
+    return sum;
+}
 
 int main()
 {
@@ -49,16 +68,34 @@ int main()
             cout << sum1 + sum2 + sum3 << endl;
             getchar();
         } */
+    /*     {
+            ThreadPool p;
+            p.start(4);
+
+            auto res1 = p.submitTask(std::make_shared<MyTask>(1, 100000000));
+            // ull sum1 = res1->get().Cast<ull>();
+            // res1.get().Cast<ull>();
+
+            // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        } */
+
     {
         ThreadPool p;
         p.start(4);
 
-        auto res1 = p.submitTask(std::make_shared<MyTask>(1, 100000000));
-        //ull sum1 = res1->get().Cast<ull>();
-        //res1.get().Cast<ull>();
+        auto res1 = p.submitTask(sum1, 1, 100000000);
+        auto res2 = p.submitTask(sum1, 100000001, 200000000);
+        auto res3 = p.submitTask(sum2, 1, 100000000, 50000000);
+        auto res4 = p.submitTask(sum2, 1, 100000000, 1000000000);
 
-        //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        cout << res1.get() << endl;
+        cout << res2.get() << endl;
+        cout << res3.get() << endl;
+        cout << res4.get() << endl;
+        // ull sum1 = res1->get().Cast<ull>();
+        // res1.get().Cast<ull>();
 
+        // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 
     cout << "main over" << endl;
