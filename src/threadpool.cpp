@@ -139,6 +139,7 @@ void ThreadPool::threadFunc(int threadId)
                 }
                 if (poolMode_ == PoolMode::MODE_CACHED)
                 {
+                    cout << "threadid: " << std::this_thread::get_id() << " 尝试获取任务!" << endl;
                     if (std::cv_status::timeout == cvNotEmpty_.wait_for(lock, std::chrono::seconds(1)))
                     {
                         auto now = std::chrono::high_resolution_clock().now();
@@ -172,6 +173,9 @@ void ThreadPool::threadFunc(int threadId)
             taskQue_.pop();
             taskCount_--;
             idleThreadSize_--;
+
+            cout << "threadid: " << std::this_thread::get_id() << " 获取任务成功，并执行任务!" << endl;
+
             // 如果队列中还有任务，通知其他线程
             if (!taskQue_.empty())
             {
