@@ -216,11 +216,12 @@ private:
     atomic_int maxThreadSize_;           // 最大线程数量
     atomic_int idleThreadSize_;          // 空闲线程的数量
 
-    atomic_int taskCount_;               // 任务队列中任务的个数
-    int taskMaxThreshold_;               // 任务队列中任务最大数量
+    atomic_int taskCount_; // 任务队列中任务的个数
+    int taskMaxThreshold_; // 任务队列中任务最大数量
 
     condition_variable cvNotFull_;  // 任务队列未满，可以向其中提交任务
     condition_variable cvNotEmpty_; // 任务队列不空，工作线程可以从其中取出任务执行
+    condition_variable cvExit_;     // 清理回收线程池
     mutex taskQueMtx_;              // 保证任务队列线程安全的互斥锁
 
     PoolMode poolMode_;       // 线程池的工作模式：fixed 和 cached

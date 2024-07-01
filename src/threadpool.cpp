@@ -7,7 +7,7 @@
 
 const int MAX_TASK_SIZE = 1024;
 const int MAX_THREAD_SIZE = 10;
-const int MAX_THREAD_IDLE_TIME = 20;
+const int MAX_THREAD_IDLE_TIME = 10;
 
 ThreadPool::ThreadPool()
     : initThreadSize_(4), curThreadSize_(0), maxThreadSize_(MAX_THREAD_SIZE), idleThreadSize_(0), taskCount_(0), taskMaxThreshold_(MAX_TASK_SIZE), poolMode_(PoolMode::MODE_FIXED), isPoolRunning(false)
@@ -16,6 +16,12 @@ ThreadPool::ThreadPool()
 
 ThreadPool::~ThreadPool()
 {
+    isPoolRunning = false;
+    cvNotEmpty_.notify_all();
+
+    unique_lock<mutex> lock(taskQueMtx_);
+    cvExit_.wait(lock, [&]() -> bool
+                 { return threads_.empty(); });
 }
 
 //  启动线程池函数
@@ -106,7 +112,7 @@ void ThreadPool::threadFunc(int threadId)
     int id = threadId;
     // 记录线程启动时间
     auto lastTime = std::chrono::high_resolution_clock().now();
-    for (;;)
+    while (isPoolRunning)
     {
         shared_ptr<Task> task;
         {
@@ -117,31 +123,44 @@ void ThreadPool::threadFunc(int threadId)
             {
                 if (poolMode_ == PoolMode::MODE_CACHED)
                 {
-                    cout << "here we go!" << endl;
                     if (std::cv_status::timeout == cvNotEmpty_.wait_for(lock, std::chrono::seconds(1)))
                     {
-                        cout << "check time !" << endl;
                         auto now = std::chrono::high_resolution_clock().now();
                         auto dur = std::chrono::duration_cast<std::chrono::seconds>(now - lastTime);
                         if (dur.count() > MAX_THREAD_IDLE_TIME && curThreadSize_ > initThreadSize_)
                         {
                             // 从thread_中删除当前线程
                             auto it = std::find_if(threads_.begin(), threads_.end(), [&](auto &up)
-                                           { return up->getId() == id; });
-                            threads_.erase(it);
-                            cout << "free thread !" << endl;
-                            // 更新记录数据
-                            curThreadSize_--;
-                            idleThreadSize_--;
-                            cout << "threadid: " << std::this_thread::get_id() << " exit!" << endl;
+                                                   { return up->getId() == id; });
+                            if (it != threads_.end())
+                            {
+                                threads_.erase(it);
+                                cout << "threadid: " << std::this_thread::get_id() << " exit!" << endl;
+                                // 更新记录数据
+                                curThreadSize_--;
+                                idleThreadSize_--;
+                            }
                             return;
                         }
                     }
-                    cout << "after if" << endl;
                 }
                 else
                 {
                     cvNotEmpty_.wait(lock);
+                }
+
+                if (!isPoolRunning)
+                {
+                    // 从thread_中删除当前线程
+                    auto it = std::find_if(threads_.begin(), threads_.end(), [&](auto &up)
+                                           { return up->getId() == id; });
+                    if (it != threads_.end())
+                    {
+                        threads_.erase(it);
+                        cout << "threadid: " << std::this_thread::get_id() << " exit!" << endl;
+                    }
+                    cvExit_.notify_all();
+                    return;
                 }
             }
 
@@ -168,6 +187,15 @@ void ThreadPool::threadFunc(int threadId)
         // 记录线程开始空闲的时间
         lastTime = std::chrono::high_resolution_clock().now();
     }
+    // 释放Thread资源
+    auto it = std::find_if(threads_.begin(), threads_.end(), [&](auto &up)
+                           { return up->getId() == id; });
+    if (it != threads_.end())
+    {
+        threads_.erase(it);
+        cout << "threadid: " << std::this_thread::get_id() << " exit!" << endl;
+    }
+    cvExit_.notify_all();
 }
 
 bool ThreadPool::checkPoolState()
